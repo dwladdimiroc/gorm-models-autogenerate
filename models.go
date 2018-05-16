@@ -144,24 +144,38 @@ func addFetchAll(f *os.File, modelName string) {
 	pluralModel := strings.ToLower(string(modelName[0])) + modelName[1:len(modelName)]
 
 	f.WriteString(`
-	// @Title get`+modelName+`
-	// @Description retrieves a list of `+pluralModel+` 
+	// @Title get` + modelName + `
+	// @Description retrieves a list of ` + pluralModel + ` 
 	// @Accept  json
-	// @Tags `+pluralModel+`
-	// @Success 200 {array}  models.`+modelName+`
-	// @Resource /`+pluralModel+`
-	// @Router /`+pluralModel+`/[get]
+	// @Tags ` + pluralModel + `
+	// @Success 200 {array}  models.` + modelName + `
+	// @Resource /` + pluralModel + `
+	// @Router /` + pluralModel + `/[get]
 	func ` + modelName + `FetchAll(c *gin.Context) {
-		db, err := db.Database()
-		defer db.Close()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		if limit, err := strconv.Atoi(c.DefaultQuery("limit", "10")); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		} else {
-			id := c.Params.ByName("id")
-			if err := db.Where("id = ?", id).First(&` + pluralModel + `).Error; err != nil {
-				c.JSON(http.StatusNotFound, gin.H{"message": err.Error()})
+			if offset, err := strconv.Atoi(c.DefaultQuery("offset", "0")); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 			} else {
-				c.JSON(http.StatusOK, ` + pluralModel + `)
+				db, err := db.Database()
+				defer db.Close()
+				if err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+				} else {
+					var ` + pluralModel + ` []` + modelName + `
+					if err := db.Offset(offset).Limit(limit).Find(&` + pluralModel + `).Error; err != nil {
+						c.JSON(http.StatusNotFound, gin.H{"message": err.Error()})
+					} else {
+						var count int
+						if err := db.Model(&`+modelName+`{}).Count(&count).Error; err != nil {
+							c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+						} else {
+							c.Header("X-Total-Count", strconv.Itoa(count))
+							c.JSON(http.StatusOK, ` + pluralModel + `)
+						}
+					}
+				}
 			}
 		}
 	}`)
