@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-
 )
 
 var FieldTypes map[string]string
@@ -43,7 +42,7 @@ func check(e error) {
 }
 
 func Init() {
-	db, err := sql.Open("postgres", "postgres://user@ip_host:port/database_name?sslmode=disable")
+	db, err := sql.Open("postgres", "postgres://falabella:Falab3lla.2017@localhost:5432/geosort?sslmode=disable")
 	check(err)
 
 	qry, err := db.Query("SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'")
@@ -70,12 +69,13 @@ func Init() {
 
 		addImport(f)
 
+		modelNameRaw := modelName
 		modelName := strings.Replace(modelName, "_", " ", -1)
 		modelName = strings.Title(modelName)
 		modelName = strings.ToUpper(string(modelName[0])) + modelName[1:]
 		modelName = strings.Replace(modelName, " ", "", -1)
-		addStruct(f, modelName, qry)
-		addCRUD(f, modelName)
+		addStruct(f, modelName, modelNameRaw, qry)
+		//addCRUD(f, modelName)
 
 		addFetchOne(f, modelName)
 		addFetchAll(f, modelName)
@@ -114,24 +114,24 @@ func addFetchOne(f *os.File, modelName string) {
 	pluralModel := strings.ToLower(string(modelName[0])) + modelName[1:len(modelName)]
 
 	f.WriteString(`
-	// @Title get`+modelName+`
-	// @Description retrieves `+singularModel+` by ID
+	// @Title get` + modelName + `
+	// @Description retrieves ` + singularModel + ` by ID
 	// @Accept  json
-	// @Tags `+pluralModel+`
-	// @Param   id     path    int     true        "`+singularModel+` ID"
-	// @Success 200 {array}  models.`+modelName+`
-	// @Failure 400 {string} code   "`+singularModel+` ID must be specified"
-	// @Resource /`+pluralModel+`
-	// @Router /`+pluralModel+`/{id} [get]
+	// @Tags ` + pluralModel + `
+	// @Param   id     path    int     true        "` + singularModel + ` ID"
+	// @Success 200 {array}  models.` + modelName + `
+	// @Failure 400 {string} code   "` + singularModel + ` ID must be specified"
+	// @Resource /` + pluralModel + `
+	// @Router /` + pluralModel + `/{id} [get]
 	func ` + modelName + `FetchOne(c * gin.Context){
 		id := c.Param("id")
-		db, err := db.Database()
-		defer db.Close()
+		data, err := db.Database()
+		defer data.Close()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		} else {
 			var ` + singularModel + ` ` + modelName + `
-			if err := db.Find(&` + singularModel + `, id).Error; err != nil {
+			if err := data.Find(&` + singularModel + `, id).Error; err != nil {
 				c.JSON(http.StatusNotFound, gin.H{"message": err.Error()})
 			} else {
 				c.JSON(http.StatusOK, ` + singularModel + `)
@@ -141,6 +141,7 @@ func addFetchOne(f *os.File, modelName string) {
 }
 
 func addFetchAll(f *os.File, modelName string) {
+	singularModel := strings.ToLower(string(modelName[0])) + modelName[1:len(modelName)-1]
 	pluralModel := strings.ToLower(string(modelName[0])) + modelName[1:len(modelName)]
 
 	f.WriteString(`
@@ -158,21 +159,26 @@ func addFetchAll(f *os.File, modelName string) {
 			if offset, err := strconv.Atoi(c.DefaultQuery("offset", "0")); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 			} else {
-				db, err := db.Database()
-				defer db.Close()
+				data, err := db.Database()
+				defer data.Close()
 				if err != nil {
 					c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 				} else {
-					var ` + pluralModel + ` []` + modelName + `
-					if err := db.Offset(offset).Limit(limit).Find(&` + pluralModel + `).Error; err != nil {
-						c.JSON(http.StatusNotFound, gin.H{"message": err.Error()})
+					var ` + singularModel + ` ` + modelName + `
+					if err := c.BindQuery(&` + singularModel + `); err != nil {
+						c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 					} else {
-						var count int
-						if err := db.Model(&`+modelName+`{}).Count(&count).Error; err != nil {
-							c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+						var ` + pluralModel + ` []` + modelName + `
+						if err := data.Offset(offset).Limit(limit).Where(&` + singularModel + `).Find(&` + pluralModel + `).Error; err != nil {
+							c.JSON(http.StatusNotFound, gin.H{"message": err.Error()})
 						} else {
-							c.Header("X-Total-Count", strconv.Itoa(count))
-							c.JSON(http.StatusOK, ` + pluralModel + `)
+							var count int
+							if err := data.Model(&` + pluralModel + `).Count(&count).Error; err != nil {
+								c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+							} else {
+								c.Header("X-Total-Count", strconv.Itoa(count))
+								c.JSON(http.StatusOK, ` + pluralModel + `)
+							}
 						}
 					}
 				}
@@ -186,25 +192,25 @@ func addCreate(f *os.File, modelName string) {
 	pluralModel := strings.ToLower(string(modelName[0])) + modelName[1:len(modelName)]
 
 	f.WriteString(`
-	// @Title get`+modelName+`
-	// @Description retrieves `+singularModel+` by ID
+	// @Title create` + modelName + `
+	// @Description retrieves ` + singularModel + ` by ID
 	// @Accept  json
-	// @Tags `+modelName+`
-	// @Success 200 {array} models.`+modelName+`
-	// @Failure 400 {string} code   "`+singularModel+` ID must be specified"
-	// @Resource /`+pluralModel+`
-	// @Router /`+pluralModel+`/ [post]
+	// @Tags ` + modelName + `
+	// @Success 200 {array} models.` + modelName + `
+	// @Failure 400 {string} code   "` + singularModel + ` ID must be specified"
+	// @Resource /` + pluralModel + `
+	// @Router /` + pluralModel + `/ [post]
 	func ` + modelName + `Create(c *gin.Context) {
 		var ` + singularModel + ` ` + modelName + `
 		if err := c.BindJSON(&` + singularModel + `); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		} else {
-			db, err := db.Database()
-			defer db.Close()
+			data, err := db.Database()
+			defer data.Close()
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 			} else {
-				if err := db.Create(&` + singularModel + `).Error; err != nil {
+				if err := data.Create(&` + singularModel + `).Error; err != nil {
 					c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 				} else {
 					c.JSON(http.StatusCreated, ` + singularModel + `)
@@ -220,30 +226,30 @@ func addUpdate(f *os.File, modelName string) {
 	pluralModel := strings.ToLower(string(modelName[0])) + modelName[1:len(modelName)]
 
 	f.WriteString(`
-	// @Title update`+modelName+`
-	// @Description retrieves `+singularModel+` by ID
+	// @Title update` + modelName + `
+	// @Description retrieves ` + singularModel + ` by ID
 	// @Accept  json
-	// @Param   id     path    int     true        "`+singularModel+` ID"
-	// @Tags `+pluralModel+`
-	// @Success 200 {array} models.`+modelName+`
-	// @Failure 400 {string}  code   "`+singularModel+` ID must be specified"
-	// @Resource /`+pluralModel+`
-	// @Router /`+pluralModel+`/{id} [put]
+	// @Param   id     path    int     true        "` + singularModel + ` ID"
+	// @Tags ` + pluralModel + `
+	// @Success 200 {array} models.` + modelName + `
+	// @Failure 400 {string}  code   "` + singularModel + ` ID must be specified"
+	// @Resource /` + pluralModel + `
+	// @Router /` + pluralModel + `/{id} [put]
 	func ` + modelName + `Update(c *gin.Context) {
 		var ` + singularModel + ` ` + modelName + `
 		id := c.Params.ByName("id")
-		db, err := db.Database()
-		defer db.Close()
+		data, err := db.Database()
+		defer data.Close()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		} else {
-			if err := db.Where("id = ?", id).First(&` + singularModel + `).Error; err != nil {
+			if err := data.Where("id = ?", id).First(&` + singularModel + `).Error; err != nil {
 				c.JSON(http.StatusNotFound, gin.H{"message": err.Error()})
 			} else {
 				if e := c.BindJSON(&` + singularModel + `); e != nil {
 					c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 				} else {
-					db.Save(&` + singularModel + `)
+					data.Save(&` + singularModel + `)
 					c.JSON(http.StatusOK, ` + singularModel + `)
 				}
 			}
@@ -256,27 +262,27 @@ func addRemove(f *os.File, modelName string) {
 	pluralModel := strings.ToLower(string(modelName[0])) + modelName[1:len(modelName)]
 
 	f.WriteString(`
-	// @Title remove`+modelName+`
-	// @Description retrieves `+singularModel+` by ID
-	// @Param   id     path    int     true        "`+singularModel+` ID"
+	// @Title remove` + modelName + `
+	// @Description retrieves ` + singularModel + ` by ID
+	// @Param   id     path    int     true        "` + singularModel + ` ID"
 	// @Accept  json
-	// @Tags `+pluralModel+`
-	// @Success 200 {array} models.`+modelName+`
-	// @Failure 400 {string} code   "`+singularModel+` ID must be specified"
-	// @Resource /`+pluralModel+`
-	// @Router /`+pluralModel+`/{id} [delete]
+	// @Tags ` + pluralModel + `
+	// @Success 200 {array} models.` + modelName + `
+	// @Failure 400 {string} code   "` + singularModel + ` ID must be specified"
+	// @Resource /` + pluralModel + `
+	// @Router /` + pluralModel + `/{id} [delete]
 	func ` + modelName + `Remove(c *gin.Context) {
 		var ` + singularModel + ` ` + modelName + `
-		db, err := db.Database()
-		defer db.Close()
+		data, err := db.Database()
+		defer data.Close()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		} else {
 			id := c.Params.ByName("id")
-			if err := db.Where("id = ?", id).First(&` + singularModel + `).Error; err != nil {
+			if err := data.Where("id = ?", id).First(&` + singularModel + `).Error; err != nil {
 				c.JSON(http.StatusNotFound, gin.H{"message": err.Error()})
 			} else {
-				db.Delete(&` + singularModel + `)
+				data.Delete(&` + singularModel + `)
 				c.JSON(http.StatusOK, ` + singularModel + `)
 			}
 		}
@@ -295,7 +301,7 @@ func addImport(f *os.File) {
 
 }
 
-func addStruct(f *os.File, modelName string, qry *sql.Rows) {
+func addStruct(f *os.File, modelName, modelNameRaw string, qry *sql.Rows) {
 
 	f.WriteString(`
 type ` + modelName + ` struct {
@@ -306,6 +312,7 @@ type ` + modelName + ` struct {
 		IsNullable    string
 		ColumnDefault string
 	)
+
 	for qry.Next() {
 		qry.Scan(&ColumnName, &DataType, &IsNullable, &ColumnDefault)
 		Title := strings.Title(ColumnName)
@@ -315,7 +322,7 @@ type ` + modelName + ` struct {
 		}
 
 		fmt.Printf("Column=%s, Type=%s, Null=%s, DefaultValue=%s\n", ColumnName, DataType, IsNullable, ColumnDefault)
-		name := Title
+		name := strings.Replace(strings.Title(strings.Replace(Title, "_", " ", -1)), " ", "", -1)
 		tp := FieldTypes[DataType]
 		sql := "`gorm:\"column:" + ColumnName + ";"
 		if IsNullable == "NO" {
@@ -323,7 +330,9 @@ type ` + modelName + ` struct {
 		}
 		sql += `"`
 
-		sql += " json:\"" + ColumnName + "\"`"
+		sql += " json:\"" + ColumnName + "\""
+
+		sql += " form:\"" + modelNameRaw + "_" + ColumnName + "\"`"
 
 		line := fmt.Sprintf("  %-10s\t%-10s\t%-20s", name, tp, sql)
 		f.WriteString(line + "\n")
