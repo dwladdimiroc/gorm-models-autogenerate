@@ -246,11 +246,14 @@ func addUpdate(f *os.File, modelName string) {
 			if err := data.Where("id = ?", id).First(&` + singularModel + `).Error; err != nil {
 				c.JSON(http.StatusNotFound, gin.H{"message": err.Error()})
 			} else {
-				if e := c.BindJSON(&` + singularModel + `); e != nil {
+				if err := c.BindJSON(&` + singularModel + `); e != nil {
 					c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 				} else {
-					data.Save(&` + singularModel + `)
-					c.JSON(http.StatusOK, ` + singularModel + `)
+					if err := data.Save(&` + singularModel + `).Error; err != nil {
+						c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+					} else {
+						c.JSON(http.StatusOK, ` + singularModel + `)
+					}
 				}
 			}
 		}
@@ -282,8 +285,11 @@ func addRemove(f *os.File, modelName string) {
 			if err := data.Where("id = ?", id).First(&` + singularModel + `).Error; err != nil {
 				c.JSON(http.StatusNotFound, gin.H{"message": err.Error()})
 			} else {
-				data.Delete(&` + singularModel + `)
-				c.JSON(http.StatusOK, ` + singularModel + `)
+				if err := data.Delete(&` + singularModel + `).Error; err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+				} else {
+					c.JSON(http.StatusOK, ` + singularModel + `)
+				}
 			}
 		}
 	}`)
