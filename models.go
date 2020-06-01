@@ -42,7 +42,7 @@ func check(e error) {
 }
 
 func Init() {
-	db, err := sql.Open("postgres", "postgres://falabella:Falab3lla.2017@localhost:5432/geosort?sslmode=disable")
+	db, err := sql.Open("postgres", "postgres://user:password@ip:port/database_name?sslmode=disable")
 	check(err)
 
 	qry, err := db.Query("SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'")
